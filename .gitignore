@@ -127,3 +127,16 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# mac files
+.DS_store
+
+# documentation
+Documentation/
+
+# software config
+Software/
+
+# vim swap
+*.swp
+
