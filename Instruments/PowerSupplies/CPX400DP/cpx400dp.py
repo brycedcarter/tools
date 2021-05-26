@@ -5,6 +5,7 @@ Date Created: 2021-05-24
 
 import serial
 import logging
+import os
 
 from Instruments.PowerSupplies.power_supplies import PowerSupply, PowerSupplyChannel
 
@@ -21,30 +22,130 @@ class CPX400DPError(Exception):
 class CPX400DPChannel(PowerSupplyChannel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        
+        # enable limit reporting for this channel
+        self.instrument.send(f'LSE{self.index} 255')
+        assert int(self.instrument.query(f'LSE{self.index}?')) == 255
 
+    
     @property
     def voltage(self) -> float:
         """
-        The current voltage setting of the CPX400DP
+        The current output voltage of the CPX400DP channel
+        """
+        result = self.instrument.query(f'V{self.index}O?')
+        voltage = float(result.split('V')[0])
+        return voltage
+
+    @property
+    def current(self) -> float:
+        """
+        The current output current of the CPX400DP channel
+        """
+        result = self.instrument.query(f'I{self.index}O?')
+        current = float(result.split('A')[0])
+        return current
+    
+    @property 
+    def voltage_setpoint(self) -> float:
+        """
+        The currently set max voltage of the CPX400DP channel
         """
         result = self.instrument.query(f'V{self.index}?')
         voltage = float(result.split(' ')[1])
         return voltage
-    
-    @voltage.setter
-    def voltage(self, value: float):
+
+    @voltage_setpoint.setter
+    def voltage_setpoint(self, value: float):
         """
-        Set the output voltage of the CPX400DP
+        Set the max voltage of the CPX400DP channel
         """
         cmd = f'V{self.index} {value:.3f}' 
+        self.instrument.send(cmd)
+    
+    @property 
+    def current_setpoint(self) -> float:
+        """
+        The currently set max current of the CPX400DP channel
+        """
+        result = self.instrument.query(f'I{self.index}?')
+        current = float(result.split(' ')[1])
+        return current
+
+    @current_setpoint.setter
+    def current_setpoint(self, value: float):
+        """
+        Set the max current of the CPX400DP channel
+        """
+        cmd = f'I{self.index} {value:.3f}' 
+        self.instrument.send(cmd)
+
+
+    @property 
+    def ovp(self) -> float:
+        """
+        The over voltage protection limit for this CPX400DP channel
+        """
+        result = self.instrument.query(f'OVP{self.index}?')
+        ovp = float(result.split(' ')[1])
+        return ovp
+
+    @ovp.setter
+    def ovp(self, value: float):
+        """
+        Set the over votlage protection limit for this CPX400DP channel
+        """
+        cmd = f'OVP{self.index} {value:.3f}' 
+        self.instrument.send(cmd)
+    
+    @property 
+    def ocp(self) -> float:
+        """
+        The over current protection limit for this CPX400DP channel
+        """
+        result = self.instrument.query(f'OCP{self.index}?')
+        ocp = float(result.split(' ')[1])
+        return ocp
+
+    @ocp.setter
+    def ocp(self, value: float):
+        """
+        Set the over current protection limit for this CPX400DP channel
+        """
+        cmd = f'OCP{self.index} {value:.3f}' 
+        self.instrument.send(cmd)
+
+    @property 
+    def on(self) -> bool:
+        """
+        The ON/OFF status of this CPX400DP channel
+        """
+        result = self.instrument.query(f'OP{self.index}?')
+        on = bool(int(result.split(' ')[1]))
+        return on
+
+    @on.setter
+    def on(self, value: bool):
+        """
+        Turn the this CPX400DP channel on or off
+        """
+        cmd = f'OP{self.index} {int(value)}' 
         self.instrument.send(cmd)
 
 
 class CPX400DP(PowerSupply):
     def __init__(self, name, location):
         self._location = location
+        assert os.path.exists(self._location)
         self.connection = None
+
         super().__init__(name)
+
+        # enable events in the status byte register and in hte event status register
+        self.send('*SRE 255')
+        assert int(self.query('*SRE?')) == 255
+        self.send('*ESE 255')
+        assert int(self.query('*ESE?')) == 255
 
     def _open(self):
         """
@@ -65,7 +166,8 @@ class CPX400DP(PowerSupply):
                                        bytesize=serial.EIGHTBITS,
                                        parity=serial.PARITY_NONE,
                                        stopbits=serial.STOPBITS_ONE,
-                                       xonxoff=True)
+                                       xonxoff=True,
+                                       timeout=1)
         self._channels.append(CPX400DPChannel(self,1))
         self._channels.append(CPX400DPChannel(self,2))
         
@@ -74,9 +176,11 @@ class CPX400DP(PowerSupply):
         """
         Close the serial connection to the CPX400DP
         """
-        self.connection.reset_input_buffer()
-        self.connection.reset_output_buffer()
-        self.connection.close()
+        if self.connection is not None:
+            self.connection.reset_input_buffer()
+            self.connection.reset_output_buffer()
+            self.connection.close()
+        
 
     def _write(self, data: str):
         """
@@ -89,7 +193,21 @@ class CPX400DP(PowerSupply):
         Read from the serial connection to the CPX400DP unit a CRLF is seen.
         This will be one reponse from the CPX400DP
         """
-        return self.connection.read_until(b'\r\n').decode('utf-8')
+        result = self.connection.read_until(b'\r\n').decode('utf-8')
+        if result == '':
+            raise TimeoutError('Did not recieve any response from CPX400DP')
+ 
+        return result  
+
+    def _get_identity(self):
+        """
+        Read the power supply details over connection and stores them as properties
+        """
+        identity = self.query('*IDN?').split(',')
+        self.manufacturer = identity[0]
+        self.model_number = identity[1]
+        self.serial_number = identity[2]
+        self.software_verison = identity[3]
 
     def send(self, cmd: str):
         """
@@ -97,8 +215,8 @@ class CPX400DP(PowerSupply):
         errors occurred
         """
         self._write(cmd+'\n')
-        stb = int(self.query('*STB?'))
-        self._process_status_byte_register(stb)
+
+        self._check_status()
 
     def query(self, cmd: str) -> str:
         """
@@ -111,81 +229,123 @@ class CPX400DP(PowerSupply):
             self.connection.reset_input_buffer()
 
         self._write(cmd+'\n')
-        response = self._read()
+        try:
+            response = self._read()
+        except TimeoutError as e: # did not receive expected message from device. 
+                                  # lets check the status for a better idea of the error
+            self_check_status()
+            raise e
+
+        return response
+
+    def reset(self):
+        """
+        Reset the CPX400DP to its default state
+        """
+        self.send('*RST')
+    
+    def _check_status(self):
+        """
+        Check the status registers and raise errors if needed
+        Status registers will be cleared by reading them
+
+        NOTE: this functionallity is not combined with the query() function so that 
+        query can check the status a recursion
+        """
+        # first check that the input buffer is empty
+        if self.connection.in_waiting > 0:
+            logger.warning('Flushing unread content from the input buffer')
+            self.connection.reset_input_buffer()
 
         self._write('*STB?'+'\n')
         stb = int(self._read())
         self._process_status_byte_register(stb)
-        
-        return response
+
+
+    def _clear_status(self):
+        """
+        Clear out all of the status registers
+        """
+        self.send('*CLS')
 
     def _process_status_byte_register(self, stb: int):
         """
         Process the contents from the status byte register and if needed
         read from the more detailed registers
         """
-        if stb & 0x1:
-            lsr = int(self.query('LSR1?'))
-            logging.warning(f'CH1 LIMITS: {self._process_limit_event_register(lsr)}')
-        elif stb & 0x2:
-            lsr = int(self.query('LSR2?'))
-            logging.warning(f'CH2 LIMITS: {self._process_limit_event_register(lsr)}')
-        elif stb & 0x4:
-            pass # unused bit 
-        elif stb & 0x8:
-            pass # unused bit 
-        elif stb & 0x10:
-            pass # no handling needed for message available 
-        elif stb & 0x20:
-            esr = int(self.query('*ESR?'))
-            logging.warning(f'EVENT STATUS: {self._process_event_status_register(esr)}')
+        if 0 <= stb <= 255:
+            if stb & 0x1:
+                lsr = int(self.query('LSR1?'))
+                self._process_limit_event_register(lsr,1)
+            if stb & 0x2:
+                lsr = int(self.query('LSR2?'))
+                self._process_limit_event_register(lsr,2)
+            if stb & 0x4:
+                pass # unused bit 
+            if stb & 0x8:
+                pass # unused bit 
+            if stb & 0x10:
+                pass # no handling needed for message available 
+            if stb & 0x20:
+                esr = int(self.query('*ESR?'))
+                logging.warning(f'EVENT STATUS: {self._process_event_status_register(esr)}')
+            if stb & 0x40:
+                pass # do nothing for RQS/MSS
+            if stb & 0x80:
+                pass # unused bit
+        else:
+            raise CPX400DPError(f'Unknown value for status byte register: {stb}')
 
     def _process_event_status_register(self, esr) -> str:
         """
         Process the contents of the event status register and return a 
         meaningful string representation of the status (or raise an exception if needed)
         """
-        if esr & 0x1:
-            return 'operation complete'
-        elif esr & 0x2:
-            pass # unused bit
-        elif esr & 0x4:
-            raise CPX400DPError('Query error: (documentation seems incomplete)')
-        elif esr & 0x8:
-            raise CPX400DPError('Verify timeout error')
-        elif esr & 0x10:
-            eer = int(self.query('EER?'))
-            self._process_execution_error(eer)
-        elif esr & 0x20:
-            raise CPX400DPError('Command parsing error') 
-        elif esr & 0x40:
-            pass # unused bit
-        elif esr & 0x80:
-            return 'power on event'
-        raise CPX400DPError(f'Unknown value for limit event register: {lsr}')
+        if 0 <= esr <= 255:
+            if esr & 0x1:
+                pass # do nothing for "operation complete"
+            if esr & 0x2:
+                pass # unused bit
+            if esr & 0x4:
+                raise CPX400DPError('Query error: (documentation seems incomplete)')
+            if esr & 0x8:
+                raise CPX400DPError('Verify timeout error')
+            if esr & 0x10:
+                eer = int(self.query('EER?'))
+                self._process_execution_error(eer)
+            if esr & 0x20:
+                raise CPX400DPError('Command parsing error') 
+            if esr & 0x40:
+                pass # unused bit
+            if esr & 0x80:
+                pass # do nothing for "power on event"
+        else:
+            raise CPX400DPError(f'Unknown value for limit event register: {lsr}')
 
-    def _process_limit_event_register(self, lsr: int) -> str:
+    def _process_limit_event_register(self, lsr: int, ch: int):
         """
         Process the contents from the limit event status register and return 
         a string representation of the status
         """
-        if lsr & 0x1:
-            return 'output entered voltage limit mode'
-        elif lsr & 0x2:
-            return 'output entered current limit mode'
-        elif lsr & 0x4:
-            return 'output over voltage trip occured'
-        elif lsr & 0x8:
-            return 'output over current trip occured'
-        elif lsr & 0x10:
-            return 'outputnt entered power limit mode (unregulated)'
-        elif lsr & 0x20:
-            pass # unused bit 
-        elif lsr & 0x40:
-            return 'trip occured (frontpanel reset required)'
-        elif lsr & 0x80:
-            pass # unused bit 
-        raise CPX400DPError(f'Unknown value for limit event register: {lsr}')
+        if 0 <= lsr <= 255: 
+            if lsr & 0x1:
+                logger.warning(f'CH{ch} LIMIT - output entered voltage limit mode')
+            if lsr & 0x2:
+                logger.warning(f'CH{ch} LIMIT - output entered current limit mode')
+            if lsr & 0x4:
+                logger.warning(f'CH{ch} LIMIT - output over voltage trip occured')
+            if lsr & 0x8:
+                logger.warning(f'CH{ch} LIMIT - output over current trip occured')
+            if lsr & 0x10:
+                logger.warning(f'CH{ch} LIMIT - output entered power limit mode (unregulated)')
+            if lsr & 0x20:
+                pass # unused bit 
+            if lsr & 0x40:
+                logger.warning(f'CH{ch} LIMIT - trip occured (frontpanel reset required)')
+            if lsr & 0x80:
+                pass # unused bit 
+        else:
+            raise CPX400DPError(f'Unknown value for limit event register: {lsr}')
 
     def _process_execution_error(self, eer: int):
         """
@@ -201,7 +361,7 @@ class CPX400DP(PowerSupply):
                     7: '7: Internal hardware error',
                     8: '8:Internal hardware error',
                     9: '9: Internal hardware error',
-                    100: '100: Range error. The numeric value sent is not allowed',
+                    100: '100: Range error. Input value invlaid',
                     101: '101: Corrupted setup date',
                     102: '102: Missing setup data',
                     103: '103: No second output',

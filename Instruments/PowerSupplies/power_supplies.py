@@ -16,23 +16,103 @@ class PowerSupplyChannel(ABC):
     def __init__(self, instrument: Instrument, index: int):
         self.instrument = instrument
         self.index = index
-    
-    @property 
+
+    @property
     @abstractmethod
     def voltage(self) -> float:
         """
-        The currently set voltage of the supply
+        The current output voltage of the channel
         """
         pass
 
-    @voltage.setter
+    @property
     @abstractmethod
-    def voltage(self, value: float):
+    def current(self) -> float:
         """
-        Set the output voltage of the supply
+        The current output current of the channel
+        """
+        pass
+    
+    @property 
+    @abstractmethod
+    def voltage_setpoint(self) -> float:
+        """
+        The currently set max voltage of the channel
         """
         pass
 
+    @voltage_setpoint.setter
+    @abstractmethod
+    def voltage_setpoint(self, value: float):
+        """
+        Set the max voltage of the channel
+        """
+        pass
+    
+    @property 
+    @abstractmethod
+    def current_setpoint(self) -> float:
+        """
+        The currently set max current of the channel
+        """
+        pass
+
+    @current_setpoint.setter
+    @abstractmethod
+    def current_setpoint(self, value: float):
+        """
+        Set the max current of the channel
+        """
+        pass
+
+
+    @property 
+    @abstractmethod
+    def ovp(self) -> float:
+        """
+        The over voltage protection limit for this channel channel
+        """
+        pass
+
+    @ovp.setter
+    @abstractmethod
+    def ovp(self, value: float):
+        """
+        Set the over votlage protection limit for this channel
+        """
+        pass
+    
+    @property 
+    @abstractmethod
+    def ocp(self) -> float:
+        """
+        The over current protection limit for this channel
+        """
+        pass
+
+    @ocp.setter
+    @abstractmethod
+    def ocp(self, value: float):
+        """
+        Set the over current protection limit for this channel
+        """
+        pass
+
+    @property 
+    @abstractmethod
+    def on(self) -> bool:
+        """
+        The ON/OFF status of this channel
+        """
+        pass
+
+    @on.setter
+    @abstractmethod
+    def on(self, value: bool):
+        """
+        Turn the this channel on or off
+        """
+        pass
 
 
 class PowerSupply(Instrument):

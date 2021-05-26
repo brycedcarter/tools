@@ -11,9 +11,18 @@ class Instrument():
     def __init__(self, name):
         self.name = name
         self._open()
+        self._get_identity()
 
     def __del__(self):
         self._close()
+
+    def __repr__(self):
+        cls = self.__class__
+        name = f'Name: {self.name}'
+        location = f'Location: {self._location}'
+        hw_identity = f'HW: {self.manufacturer} {self.model_number} {self.serial_number}'
+        sw_identity = f'SW: {self.software_verison}'
+        return f'{cls}\n{name}\n{location}\n{hw_identity}\n{sw_identity}'
     
     @abstractmethod
     def _write(self, data: str):
@@ -27,6 +36,32 @@ class Instrument():
         """
         Abstract mehod for reading data from the instrument
         Designed to read just a single response from the instrument
+        """
+        pass
+    
+    @abstractmethod
+    def _get_identity(self):
+        """
+        Abstract method for collection the identifiying information from the instrument
+        This method is responsible for populating the following properties:
+            self.manufacturer
+            self.model_number
+            self.serial_number
+            self.software_version
+        """
+        pass
+
+    @abstractmethod
+    def _open(self):
+        """
+        Open connection to the Instrument
+        """
+        pass
+
+    @abstractmethod
+    def _close(self):
+        """
+        Close connection to the instrument
         """
         pass
 
@@ -43,22 +78,10 @@ class Instrument():
         Abstract method for running a query that is expected to return a result 
         """
         pass
-
-
-
+    
     @abstractmethod
-    def _open(self):
+    def reset(self):
         """
-        Open connection to the Instrument
+        Abstract method for resetting the istrument to its default settings
         """
         pass
-
-    @abstractmethod
-    def _close(self):
-        """
-        Close connection to the instrument
-        """
-        pass
-
-
-
