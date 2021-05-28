@@ -1,4 +1,4 @@
-r"""
+"""
 Parent classes for all insturment connections
 
 Author: Bryce Carter
@@ -7,7 +7,8 @@ Date Created: 2021-05-24
 
 from abc import ABC, abstractmethod
 
-class Instrument():
+
+class Instrument(ABC):
     def __init__(self, name):
         self.name = name
         self._open()
@@ -20,10 +21,12 @@ class Instrument():
         cls = self.__class__
         name = f'Name: {self.name}'
         location = f'Location: {self._location}'
-        hw_identity = f'HW: {self.manufacturer} {self.model_number} {self.serial_number}'
+        hw_identity = (f'HW: {self.manufacturer} '
+                       f'{self.model_number} '
+                       f'{self.serial_number}')
         sw_identity = f'SW: {self.software_verison}'
         return f'{cls}\n{name}\n{location}\n{hw_identity}\n{sw_identity}'
-    
+
     @abstractmethod
     def _write(self, data: str):
         """
@@ -38,11 +41,11 @@ class Instrument():
         Designed to read just a single response from the instrument
         """
         pass
-    
+
     @abstractmethod
     def _get_identity(self):
         """
-        Abstract method for collection the identifiying information from the instrument
+        Abstract method for collection the identifiying information
         This method is responsible for populating the following properties:
             self.manufacturer
             self.model_number
@@ -66,7 +69,7 @@ class Instrument():
         pass
 
     @abstractmethod
-    def send(self, cmd: str): 
+    def send(self, cmd: str):
         """
         Abstract method for sending commands to the instrument
         """
@@ -75,10 +78,10 @@ class Instrument():
     @abstractmethod
     def query(self, cmd: str) -> str:
         """
-        Abstract method for running a query that is expected to return a result 
+        Abstract method for running a query that is expected to return a result
         """
         pass
-    
+
     @abstractmethod
     def reset(self):
         """
