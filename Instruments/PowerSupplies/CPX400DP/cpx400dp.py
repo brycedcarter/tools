@@ -9,8 +9,7 @@ import serial
 import logging
 import os
 
-from instruments.powersupplies.powersupply import (PowerSupply,
-                                                   PowerSupplyChannel)
+from instruments import _PowerSupply, _PowerSupplyChannel
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ class CPX400DPError(Exception):
     pass
 
 
-class CPX400DPChannel(PowerSupplyChannel):
+class _CPX400DPChannel(_PowerSupplyChannel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -122,7 +121,7 @@ class CPX400DPChannel(PowerSupplyChannel):
         self.instrument.send(cmd)
 
 
-class CPX400DP(PowerSupply):
+class CPX400DP(_PowerSupply):
     def __init__(self, name, location):
         self._location = location
         assert os.path.exists(self._location)

@@ -8,7 +8,7 @@ Date Created: 2021-05-24
 from abc import ABC, abstractmethod
 
 
-class Instrument(ABC):
+class _Instrument(ABC):
     def __init__(self, name):
         self.name = name
         self._open()

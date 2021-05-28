@@ -9,12 +9,12 @@ Date Created: 2021-05-24
 from abc import ABC, abstractmethod
 
 # local imports
-from instruments.instrument import Instrument
+from instruments import _Instrument
 
 
-class PowerSupplyChannel(ABC):
+class _PowerSupplyChannel(ABC):
     """A class to control a single channel of a power supply"""
-    def __init__(self, instrument: Instrument, index: int):
+    def __init__(self, instrument: _Instrument, index: int):
         self.instrument = instrument
         self.index = index
 
@@ -91,7 +91,7 @@ class PowerSupplyChannel(ABC):
         pass
 
 
-class PowerSupply(Instrument):
+class _PowerSupply(_Instrument):
     """A class to interface with power supplies"""
 
     def __init__(self, name):
