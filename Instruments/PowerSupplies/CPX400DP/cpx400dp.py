@@ -22,7 +22,7 @@ class CPX400DPError(Exception):
     pass
 
 
-class _CPX400DPChannel(_PowerSupplyChannel):
+class CPX400DPChannel(_PowerSupplyChannel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -108,17 +108,22 @@ class _CPX400DPChannel(_PowerSupplyChannel):
 
     @property
     def on(self) -> bool:
-        """The ON/OFF status of this CPX400DP channel"""
+        """Indicates the state of the output of this CPX400DP channel"""
 
         result = self.instrument.query(f'OP{self.index}?')
         on = bool(int(result.split(' ')[1]))
         return on
 
-    @on.setter
-    def on(self, value: bool):
-        """Turn the this CPX400DP channel on or off"""
+    def output_on(self):
+        """Turn the this CPX400DP channel on"""
 
-        cmd = f'OP{self.index} {int(value)}'
+        cmd = f'OP{self.index} 1'
+        self.instrument.send(cmd)
+
+    def output_off(self):
+        """Turn the this CPX400DP channel off"""
+
+        cmd = f'OP{self.index} 0'
         self.instrument.send(cmd)
 
 
@@ -227,6 +232,16 @@ class CPX400DP(_PowerSupply):
         """Reset the CPX400DP to its default state"""
 
         self.send('*RST')
+
+    @property
+    def ch1(self) -> CPX400DPChannel:
+        """Annotating with correct type hinting"""
+        return super().ch1
+
+    @property
+    def ch2(self) -> CPX400DPChannel:
+        """Annotating with correct type hinting"""
+        return super().ch2
 
     def _check_status(self):
         """

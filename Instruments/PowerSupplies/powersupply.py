@@ -81,13 +81,17 @@ class _PowerSupplyChannel(ABC):
     @property
     @abstractmethod
     def on(self) -> bool:
-        """The ON/OFF status of this channel"""
+        """Indicates the state of the output of this channel"""
         pass
 
-    @on.setter
     @abstractmethod
-    def on(self, value: bool):
-        """Turn the this channel on or off"""
+    def output_on(self):
+        """Turn this channel's output on"""
+        pass
+
+    @abstractmethod
+    def output_off(self):
+        """Turn this channel's output off"""
         pass
 
 
