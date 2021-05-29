@@ -163,6 +163,10 @@ class CPX400DP(_PowerSupply):
                                         stopbits=serial.STOPBITS_ONE,
                                         xonxoff=True,
                                         timeout=1)
+        if not self._get_lock():
+            raise CPX400DPError(
+                'Could not obtain lock for interface with CPX400DP')
+
         self._channels.append(CPX400DPChannel(self, 1))
         self._channels.append(CPX400DPChannel(self, 2))
 
@@ -170,6 +174,9 @@ class CPX400DP(_PowerSupply):
         """Close the serial connection to the CPX400DP"""
 
         if self.connection is not None:
+            self._release_lock()
+            self.local()
+
             self.connection.reset_input_buffer()
             self.connection.reset_output_buffer()
             self.connection.close()
@@ -198,6 +205,22 @@ class CPX400DP(_PowerSupply):
         self.model_number = identity[1]
         self.serial_number = identity[2]
         self.software_verison = identity[3]
+
+    def _get_lock(self) -> bool:
+        """
+        Obtains the lock for the current interface with the CPX400DP
+
+        Returns True of the lock was obtained and False if it was not
+        """
+        return True if int(self.query('IFLOCK')) == 1 else False
+
+    def _release_lock(self) -> bool:
+        """
+        Releases the lock that this interface has on control of the CPX400DP
+
+        Returns true if the lock release is successful and False if it is not
+        """
+        return True if int(self.query('IFUNLOCK')) == 0 else False
 
     def send(self, cmd: str):
         """Sends a command to the CPX400DP and then checks that status"""
@@ -232,6 +255,12 @@ class CPX400DP(_PowerSupply):
         """Reset the CPX400DP to its default state"""
 
         self.send('*RST')
+
+    def local(self):
+        """
+        Puts the CPX400DP into local mode
+        """
+        self.send('LOCAL')
 
     @property
     def ch1(self) -> CPX400DPChannel:
