@@ -260,7 +260,9 @@ class CPX400DP(_PowerSupply):
         """
         Puts the CPX400DP into local mode
         """
-        self.send('LOCAL')
+        # cannot use "self.send()" because follow up writing to check if the
+        # command was successful will re-establish remote control
+        self._write('LOCAL\n')
 
     @property
     def ch1(self) -> CPX400DPChannel:
