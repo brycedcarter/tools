@@ -9,7 +9,8 @@ import serial
 import logging
 import os
 
-from instruments import _PowerSupply, _PowerSupplyChannel
+from instruments.powersupplies import (_PowerSupply,
+                                       _PowerSupplyChannel)
 
 logger = logging.getLogger(__name__)
 
