@@ -11,6 +11,8 @@ import os
 
 from instruments.powersupplies import (_PowerSupply,
                                        _PowerSupplyChannel)
+from instruments.connection import SerialConnection
+from instruments.decorators import atomic_operation
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +133,7 @@ class CPX400DP(_PowerSupply):
     def __init__(self, name, location):
         self._location = location
         assert os.path.exists(self._location)
-        self.connection = None
+        self._connection = None
 
         super().__init__(name)
 
@@ -142,11 +144,12 @@ class CPX400DP(_PowerSupply):
         self.send('*ESE 255')
         assert int(self.query('*ESE?')) == 255
 
+    @atomic_operation
     def _open(self):
         """
         Open serial connection to the CPX400DP
 
-        From CPX400DP user mannual:
+        From CPX400DP user manual:
             Baud=9600
             Start=1
             Stop=1
@@ -156,13 +159,17 @@ class CPX400DP(_PowerSupply):
             XOFF @ ~200 chars in 256 deep queue
             XON @ ~100 chars free
         """
-        self.connection = serial.Serial(self._location,
-                                        baudrate=9600,
-                                        bytesize=serial.EIGHTBITS,
-                                        parity=serial.PARITY_NONE,
-                                        stopbits=serial.STOPBITS_ONE,
-                                        xonxoff=True,
-                                        timeout=1)
+        super()._open()
+        serial_settings = dict(baudrate=9600,
+                               bytesize=serial.EIGHTBITS,
+                               parity=serial.PARITY_NONE,
+                               stopbits=serial.STOPBITS_ONE,
+                               xonxoff=True,
+                               timeout=1,
+                               line_termination=b'\r\n')
+
+        self._connection = SerialConnection(self._location,
+                                            settings=serial_settings)
         if not self._get_lock():
             raise CPX400DPError(
                 'Could not obtain lock for interface with CPX400DP')
@@ -170,33 +177,33 @@ class CPX400DP(_PowerSupply):
         self._channels.append(CPX400DPChannel(self, 1))
         self._channels.append(CPX400DPChannel(self, 2))
 
+    @atomic_operation
     def _close(self):
         """Close the serial connection to the CPX400DP"""
-
-        if self.connection is not None:
+        if self._connection.is_open:
             self._release_lock()
             self.local()
+            self._connection.close()
+        super()._close()
 
-            self.connection.reset_input_buffer()
-            self.connection.reset_output_buffer()
-            self.connection.close()
-
+    @atomic_operation
     def _write(self, data: str):
         """Send data over the serial interface to the CPX400DP"""
+        self._connection.send(data)
 
-        self.connection.write(data.encode('utf-8'))
-
+    @atomic_operation
     def _read(self) -> str:
         """
         Read from the serial connection to the CPX400DP unit a CRLF is seen.
-        This will be one reponse from the CPX400DP
+        This will be one response from the CPX400DP
         """
-        result = self.connection.read_until(b'\r\n').decode('utf-8')
+        result = self._connection.receive()
         if result == '':
-            raise TimeoutError('Did not recieve any response from CPX400DP')
+            raise TimeoutError('Did not receive any response from CPX400DP')
 
         return result
 
+    @atomic_operation
     def _get_identity(self):
         """Read the power supply details and stores them as properties"""
 
@@ -204,8 +211,9 @@ class CPX400DP(_PowerSupply):
         self.manufacturer = identity[0]
         self.model_number = identity[1]
         self.serial_number = identity[2]
-        self.software_verison = identity[3]
+        self.software_version = identity[3]
 
+    @atomic_operation
     def _get_lock(self) -> bool:
         """
         Obtains the lock for the current interface with the CPX400DP
@@ -214,6 +222,7 @@ class CPX400DP(_PowerSupply):
         """
         return True if int(self.query('IFLOCK')) == 1 else False
 
+    @atomic_operation
     def _release_lock(self) -> bool:
         """
         Releases the lock that this interface has on control of the CPX400DP
@@ -222,6 +231,7 @@ class CPX400DP(_PowerSupply):
         """
         return True if int(self.query('IFUNLOCK')) == 0 else False
 
+    @atomic_operation
     def send(self, cmd: str):
         """Sends a command to the CPX400DP and then checks that status"""
 
@@ -229,16 +239,16 @@ class CPX400DP(_PowerSupply):
 
         self._check_status()
 
+    @atomic_operation
     def query(self, cmd: str) -> str:
         """
         Sends a command to the CPX400DP and then waits for a response.
         Also checks the status to ensure that no errors occurred
         """
 
-        # first check that the input buffer is empty and clear it if not
-        if self.connection.in_waiting > 0:
-            logger.warning('Flushing unread content from the input buffer')
-            self.connection.reset_input_buffer()
+        if max(self._connection.flush()) > 0:
+            logger.warning('Flushing unread content from the input buffer '
+                           '- this is not expected.')
 
         self._write(cmd+'\n')
         try:
@@ -251,11 +261,13 @@ class CPX400DP(_PowerSupply):
 
         return response
 
+    @atomic_operation
     def reset(self):
         """Reset the CPX400DP to its default state"""
 
         self.send('*RST')
 
+    @atomic_operation
     def local(self):
         """
         Puts the CPX400DP into local mode
@@ -274,6 +286,7 @@ class CPX400DP(_PowerSupply):
         """Annotating with correct type hinting"""
         return super().ch2
 
+    @atomic_operation
     def _check_status(self):
         """
         Check the status registers and raise errors if needed
@@ -282,15 +295,16 @@ class CPX400DP(_PowerSupply):
         NOTE: this functionallity is not combined with the query() function
         so that query can check the status a recursion
         """
-        # first check that the input buffer is empty
-        if self.connection.in_waiting > 0:
-            logger.warning('Flushing unread content from the input buffer')
-            self.connection.reset_input_buffer()
+
+        if max(self._connection.flush()) > 0:
+            logger.warning('Flushing unread content from the input buffer '
+                           '- this is not expected.')
 
         self._write('*STB?'+'\n')
         stb = int(self._read())
         self._process_status_byte_register(stb)
 
+    @atomic_operation
     def _clear_status(self):
         """Clear out all of the status registers"""
 
