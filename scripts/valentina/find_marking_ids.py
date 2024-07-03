@@ -18,6 +18,7 @@ def parse_args():
     parser.add_argument("file", type=Path, help="file to parse")
     parser.add_argument("--piece", default='A', type=str, help="Piece letter to search for")         
     parser.add_argument("--detail", type=str, help="Name of the detail to add labels to")         
+    parser.add_argument("--draw", type=str, help="Name of the drawing to process")         
     parser.add_argument("--make_updates",  action='store_true', default=False, help="Make changes to the file")         
 
     args = parser.parse_args()
@@ -26,25 +27,25 @@ def parse_args():
 def parse_file(file):
     return ET.parse(file)
 
-def find_base_ids(root, piece_prefix=None):
+def find_base_ids(draw, piece_prefix=None):
     '''
     Find the ids that are not the result of transforms
     '''
     prefix_re = r'[a-zA-Z]' if piece_prefix is None else piece_prefix 
     name_re = r'^' + prefix_re + r'1[0-9]{2}$'
 
-    calc = root.find('.//calculation')
+    calc = draw.find('.//calculation')
     points = calc.findall('.//point')
     label_points = [p.get('id') for p in points if re.match(name_re, p.get('name'))]
     return label_points
 
-def find_derived_ids(root, base_ids):
+def find_derived_ids(draw, base_ids):
     '''
     Find the ids that result from operations on a set of base ids
     '''
     derived_ids = []
 
-    calc = root.find('.//calculation')
+    calc = draw.find('.//calculation')
     operations = calc.findall('operation')
     for operation in operations:
         source = operation.find('source')
@@ -69,11 +70,11 @@ def current_max_id(root):
     return max(ids+id_refs)
     
 
-def find_missing_place_labels(root, label_points):
+def find_missing_place_labels(draw, label_points):
     '''
     determine which points do not yet have place labels created for them
     '''
-    model = root.find('.//modeling')
+    model = draw.find('.//modeling')
     points = model.findall('point[@type="placeLabel"]')
     existing_ids = [p.get('idObject') for p in points]
     missing_ids = [i for i in label_points if i not in existing_ids]
@@ -90,11 +91,11 @@ class LabelSpec:
 
 DEFAULT_LABEL_SPEC = LabelSpec("2", "2", "0", "2", "1")
 
-def add_labels(root, missing_ids, spec=DEFAULT_LABEL_SPEC):
+def add_labels(root, draw, missing_ids, spec=DEFAULT_LABEL_SPEC):
     '''
     Add a label for each of the missing ids
     '''
-    model = root.find('.//modeling')
+    model = draw.find('.//modeling')
     starting_id = current_max_id(root) + 1
     newly_added_labels = []
     for i, missing_id in enumerate(missing_ids):
@@ -114,11 +115,11 @@ def add_labels(root, missing_ids, spec=DEFAULT_LABEL_SPEC):
         newly_added_labels.append(attribs['id'])
     return newly_added_labels
 
-def add_place_labels_to_details(root, detail_name, label_ids):
+def add_place_labels_to_details( draw, detail_name, label_ids):
     '''
     Injects a set of place label ids into a detail
     '''
-    place_labels = root.find(f'.//detail[@name="{detail_name}"]/placeLabels')
+    place_labels = draw.find(f'.//detail[@name="{detail_name}"]/placeLabels')
     assert place_labels is not None, f"Could not find place labels for: '{detail_name}'"
     for label_id in label_ids:
         record = ET.Element('record')
@@ -140,24 +141,30 @@ def write_file(tree, filepath, create_backup=True):
         ET.indent(tree)
         tree.write(f, encoding='utf-8')
 
+def get_draw(root, draw_name):
+    return root.find(f'.//draw[@name="{draw_name}"]')
+
 
 
 def main():
     args = parse_args()
     tree = parse_file(args.file)
     root = tree.getroot()
-    base_ids = find_base_ids(root)
+    draw = get_draw(root, args.draw)
+    
+    base_ids = find_base_ids(draw)
     print(base_ids)
-    derived_ids = find_derived_ids(root, base_ids)
+    derived_ids = find_derived_ids(draw, base_ids)
     all_ids = base_ids + derived_ids
-    missing_ids, existing_label_ids = find_missing_place_labels(root, all_ids)
+    missing_ids, existing_label_ids = find_missing_place_labels(draw, all_ids)
     print(existing_label_ids)
     print(missing_ids)
    
     if args.make_updates:
         print('Adding new labels')
-        newly_added_labels = add_labels(root, missing_ids)
-        add_place_labels_to_details(root, args.detail, newly_added_labels)
+        newly_added_labels = add_labels(root,draw, missing_ids)
+        print(f'The following label ids were added: {newly_added_labels}')
+        add_place_labels_to_details(draw, args.detail, newly_added_labels)
         write_file(tree, args.file)
 
 
